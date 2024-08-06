@@ -1,5 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
@@ -9,18 +11,28 @@ public class Node : MonoBehaviour,IPointerClickHandler,IBeginDragHandler, IPoint
     public float gCost;
     public float hCost;
     public float FCost => gCost + hCost;
+
     public Node previousNode;
+
     public List<Node> neighbors = new List<Node>();
     public bool isObstacle;
+
+    [Header("Text Node")]
+    public TextMeshProUGUI gText;
+    public TextMeshProUGUI hText;
+    public TextMeshProUGUI fText;
+    public Canvas canvasText;
 
     static int pickPrepare;
     static bool isDaging;
     public static bool IsChangePlayer;
     public static bool IsChangePlayerUpdate;
-
+    float radius;
     void Start()
     {
-        neighbors = Physics2D.CircleCastAll(transform.position, 0.5f, Vector2.zero)
+        radius = GridManager.Instance.transform.localScale.x;
+        canvasText.gameObject.SetActive(false);
+        neighbors = Physics2D.CircleCastAll(transform.position, radius, Vector2.zero)
             .Select(hit => hit.transform.GetComponent<Node>()).Where(hit => hit.transform.GetComponent<Node>()!=this)
             .ToList();        
     }
@@ -35,8 +47,9 @@ public class Node : MonoBehaviour,IPointerClickHandler,IBeginDragHandler, IPoint
         else if(pickPrepare ==2)
         {
             PathfindingAStar.Instance.target = this;
-            GetComponent<SpriteRenderer>().color = GridManager.Instance.colorTarget;
-            GridManager.Instance.AddCostAllNode();
+            isObstacle = false;
+            GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spriteTarget;
+            GridManager.Instance.AddHCostAllNode();
         }
         else
         {
@@ -65,36 +78,45 @@ public class Node : MonoBehaviour,IPointerClickHandler,IBeginDragHandler, IPoint
     {
         if (this == PathfindingAStar.Instance.target) return;
         if (this == PathfindingAStar.Instance.player) return;
-        GetComponent<SpriteRenderer>().color = GridManager.Instance.colorPath;
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spritePath;
     }
     public void UpdateDisplayFrontier()
     {
         if (this == PathfindingAStar.Instance.target) return;
-        GetComponent<SpriteRenderer>().color = GridManager.Instance.colorFrontier;
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spriteFrontier;
+        SetTextNode();
     }
     public void UpdateDisplayExplored()
     {
         if (this == PathfindingAStar.Instance.target) return;
-        GetComponent<SpriteRenderer>().color = GridManager.Instance.colorExplored;
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spriteExplored;
     }
     void UpdateDisplayObstacle()
     {
         isObstacle = true;
-        GetComponent<SpriteRenderer>().color = GridManager.Instance.colorObstacle;
-
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spriteObstacle;
+        canvasText.gameObject.SetActive(false);
+    }
+    public void UpdateDisplayCurrent()
+    {
+        if (this == PathfindingAStar.Instance.player) return;
+        if (this == PathfindingAStar.Instance.target) return;
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spriteCurrent;
     }
     public void UpdateDisplayPlayer()
     {
         if(PathfindingAStar.Instance.player!=null) PathfindingAStar.Instance.player.UpdateDisplayOrigin(false,true);
         PathfindingAStar.Instance.player = this;
-        GetComponent<SpriteRenderer>().color = GridManager.Instance.colorPlayer;
+        isObstacle=false;
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spritePlayer;
     }
     public void UpdateDisplayOrigin(bool checkPlayer=true,bool checkTarget=true)
     {
         if(checkPlayer) if (this == PathfindingAStar.Instance.player) return;
         if(checkTarget) if (this == PathfindingAStar.Instance.target) return;
         isObstacle = false;
-        GetComponent<SpriteRenderer>().color = GridManager.Instance.colorOrigin;
+        GetComponent<SpriteRenderer>().sprite = GridManager.Instance.spriteOrigin;
+        canvasText.gameObject.SetActive(false);
     }
     public void OnPointerEnter(PointerEventData eventData)
     {
@@ -138,7 +160,14 @@ public class Node : MonoBehaviour,IPointerClickHandler,IBeginDragHandler, IPoint
             IsChangePlayerUpdate = false;
         }
     }
-
+    public void SetTextNode()
+    {
+        //return;
+        gText.text = Math.Round(gCost,1).ToString();
+        hText.text = Math.Round(hCost,1).ToString();
+        fText.text = Math.Round(FCost,1).ToString();
+        canvasText.gameObject.SetActive(true);
+    }
     public void OnDrag(PointerEventData eventData)
     {
 

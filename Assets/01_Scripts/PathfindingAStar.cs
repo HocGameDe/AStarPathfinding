@@ -14,19 +14,20 @@ public class PathfindingAStar : MonoBehaviour
     public Node player;
     public Node target;
     public Node currentNode;
+
     [Header("Time")]
     public float timeStepShowResult;
+    public float timeStepFindSlow;
     float timeFind;
-
     private void Awake()
     {
         Instance = this;
     }
     void InitPathfinding()
     {
+        ClearAllList();
         currentNode = player;
         frontierNodes.AddRange(currentNode.neighbors.Where(node => !node.isObstacle));
-        if (frontierNodes.Contains(target)) Debug.Log("TRUE");
         foreach (var node in frontierNodes)
         {
             node.gCost = Vector2.Distance(PathfindingAStar.Instance.player.transform.position, node.transform.position);
@@ -34,6 +35,7 @@ public class PathfindingAStar : MonoBehaviour
             node.UpdateDisplayFrontier();
         }
         exploredNodes.Add(currentNode);
+        PlayerController.Instance.SetStateRunAnimator(0);
     }
     public void StartFind()
     {
@@ -46,13 +48,24 @@ public class PathfindingAStar : MonoBehaviour
         }
         LogResultFind(result);
     }
+    
     bool FindPath()
     {
         timeFind = Time.time;
         if (frontierNodes.Count <= 0)
         {
-            Debug.LogError("Cout frontier by zero");
+            Debug.LogError("Count frontier by zero");
             return false;
+        }
+        if (frontierNodes.Contains(target))
+        {
+            Debug.LogWarning("One Block");
+            return true;
+        }
+        if (target == player)
+        {
+            Debug.LogWarning("Zero Block");
+            return true;
         }
         while (currentNode != target)
         {
@@ -60,8 +73,13 @@ public class PathfindingAStar : MonoBehaviour
             currentNode = BestNodeCostFrontier();
             if (currentNode == null)
             {
-                Debug.LogError("Don't Find Out Target Node");
+                Debug.LogError("Target Node not found");
                 return false;
+            }
+            if (IsNodeTarget(currentNode))
+            {
+                Debug.Log("Done");
+                return true;
             }
             if (AddExplored(currentNode))
             {
@@ -72,19 +90,21 @@ public class PathfindingAStar : MonoBehaviour
                 Debug.LogError("Bug Frontier Node convert to Explored Node");
                 return false;
             }
-            if (IsNodeTarget(currentNode)) return true;
         }
         timeFind = Time.time - timeFind;
         return true;
     }
     public void RestartFind()
-    { 
+    {
+        StartFind();
+    }
+    void ClearAllList()
+    {
         resultPath.Clear();
-        foreach (var node in frontierNodes) if(!node.isObstacle) node.UpdateDisplayOrigin();
+        foreach (var node in frontierNodes) if (!node.isObstacle) node.UpdateDisplayOrigin();
         frontierNodes.Clear();
         foreach (var node in exploredNodes) if (!node.isObstacle) node.UpdateDisplayOrigin();
         exploredNodes.Clear();
-        StartFind();
     }
     public void SetOnChangePlayerNode()
     {
@@ -100,10 +120,16 @@ public class PathfindingAStar : MonoBehaviour
         Debug.Log("Result = "+ result);
         Debug.Log("Time = "+ timeFind);
     }
-    Node BestNodeCostFrontier()
+    Node BestNodeCostFrontier(bool bestSpeed =false)
     {
         if(frontierNodes.Count <= 0) return null;
-        return frontierNodes.OrderBy(node => node.FCost).First();
+        if (bestSpeed) return frontierNodes.OrderBy(node => node.hCost).First();
+        else
+        {
+            frontierNodes = frontierNodes.OrderBy(node => node.FCost).ToList();
+            return frontierNodes.Where(node => node.FCost == frontierNodes.First().FCost)
+                .OrderBy(node => node.hCost).First();
+        }
     }
     void AddNeightborsFrontier(Node node)
     {
@@ -115,24 +141,25 @@ public class PathfindingAStar : MonoBehaviour
             }
             else
             {
-                if(AddFrontier(neighbor)) neighbor.previousNode = node;
-                neighbor.gCost = node.gCost + Vector2.Distance(node.transform.position, neighbor.transform.position);
+                if (AddFrontier(neighbor))
+                {
+                    neighbor.previousNode = node;
+                    neighbor.gCost = node.gCost + Vector2.Distance(node.transform.position, neighbor.transform.position);
+                    neighbor.SetTextNode();
+                }
             }
         }
     }
     void CheckChangeNodePrevious(Node current, Node neighbor)
     {
-        var FCost = current.gCost+Vector2.Distance(current.transform.position, neighbor.transform.position) + neighbor.hCost;
-
-        if (FCost < neighbor.FCost)
+        var FCostNeighborWithCurrent = current.gCost+Vector2.Distance(current.transform.position, neighbor.transform.position) + neighbor.hCost;
+        bool checkFCost = FCostNeighborWithCurrent < neighbor.FCost;
+        bool checkHCost = (FCostNeighborWithCurrent == neighbor.FCost) && (current.hCost < neighbor.previousNode.hCost);
+        if (checkFCost||checkHCost)
         {
             neighbor.previousNode = current;
             neighbor.gCost = current.gCost + Vector2.Distance(current.transform.position, neighbor.transform.position);
-        }
-        else if (FCost == neighbor.FCost && current.hCost < neighbor.previousNode.hCost)
-        {
-            neighbor.previousNode = current;
-            neighbor.gCost = current.gCost + Vector2.Distance(current.transform.position, neighbor.transform.position);
+            neighbor.SetTextNode();
         }
     }
     bool IsNodeTarget(Node node)
@@ -152,7 +179,7 @@ public class PathfindingAStar : MonoBehaviour
     }
     bool AddFrontier(Node node)
     {
-        if (!node.isObstacle && !exploredNodes.Contains(node))
+        if (!node.isObstacle && !exploredNodes.Contains(node)&&node!=player)
         {
             frontierNodes.Add(node);
             node.UpdateDisplayFrontier();
@@ -171,5 +198,62 @@ public class PathfindingAStar : MonoBehaviour
             resultPath.Add(currentNode);
             yield return new WaitForSeconds(timeStepShowResult);
         }
+        MoveCharacter();
+    }
+    public void StartFindSlow(bool bestSpeed)
+    {
+        InitPathfinding();
+        StartCoroutine(FindSlow(bestSpeed));
+    }
+    IEnumerator FindSlow(bool bestSpeed)
+    {
+        if (frontierNodes.Count <= 0)
+        {
+            Debug.LogError("Cout frontier by zero");
+            yield break;
+        }
+        if (frontierNodes.Contains(target))
+        {
+            Debug.LogWarning("One Block");
+            yield break;
+        }
+        if (target == player)
+        {
+            Debug.LogWarning("Zero Block");
+            yield break;
+        }
+        while (currentNode != target)
+        {
+            currentNode = null;
+            currentNode = BestNodeCostFrontier(bestSpeed);
+            if (currentNode == null)
+            {
+                Debug.LogError("Target Node not found");
+                yield break;
+            }
+            currentNode.UpdateDisplayCurrent();
+            yield return new WaitForSeconds(timeStepFindSlow);
+            if (IsNodeTarget(currentNode))
+            {
+                Debug.Log("Done");
+                yield return StartCoroutine(nameof(ShowPathResult));
+                yield break;
+            }
+            if (AddExplored(currentNode))
+            {
+                AddNeightborsFrontier(currentNode);
+                yield return new WaitForSeconds(timeStepFindSlow);
+            }
+            else
+            {
+                Debug.LogError("Bug Frontier Node convert to Explored Node");
+                yield break;
+            }          
+        }       
+    }
+    void MoveCharacter()
+    {
+        var listPosPath = resultPath.Select((node) => node.transform.position).ToList();
+        PlayerController.Instance.StartMoveWithPath(listPosPath);
     }
 }
